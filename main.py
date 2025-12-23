@@ -1,85 +1,140 @@
 import argparse
 import os
+import time
+from argparse import ArgumentParser
+from pathlib import Path
+from re import L
 
-from PDAnalysis import Protein, AverageProtein, Deformation
+from parallel_func import head_workers_queue
+from PDAnalysis import AverageProtein, Deformation, Protein
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
         prog="python main.py",
-        description="Protein Deformation Analysis v0.0.0: software for analysing deformation between protein structures.")
+        description="Protein Deformation Analysis v0.0.0: software for analysing deformation between protein structures.",
+    )
 
     ### Protein input files
 
-    parser.add_argument("--protA", nargs="+", type=str, default='',
-        help="Input Protein(s) A: Can be a path to a PDB, mmCIF, or coordinates file (.npy or .txt)." + \
-             " Multiple paths can be provided separated by spaces (e.g., --protA path1 path2 path3).")
+    parser.add_argument(
+        "--protA",
+        nargs="+",
+        type=str,
+        default="",
+        help="Input Protein(s) A: Can be a path to a PDB, mmCIF, or coordinates file (.npy or .txt)."
+        + " Multiple paths can be provided separated by spaces (e.g., --protA path1 path2 path3).",
+    )
 
-    parser.add_argument("--prot_listA", type=str, default='',
-        help="Input Protein(s) A: Can be a path to a file multiple protein paths." + \
-             "One protein path per line. Each protein path can be a PDB, mmCIF, or coordinates file (.npy or .txt).")
+    parser.add_argument(
+        "--prot_listA",
+        type=str,
+        default="",
+        help="Input Protein(s) A: Can be a path to a file multiple protein paths."
+        + "One protein path per line. Each protein path can be a PDB, mmCIF, or coordinates file (.npy or .txt).",
+    )
 
-    parser.add_argument("--protB", nargs="+", type=str, default='',
-        help="Input Protein(s) B: Can be a path to a PDB, mmCIF, or coordinates file (.npy or .txt)." + \
-             " Multiple paths can be provided separated by spaces (e.g., --protA path1 path2 path3).")
+    parser.add_argument(
+        "--protB",
+        nargs="+",
+        type=str,
+        default="",
+        help="Input Protein(s) B: Can be a path to a PDB, mmCIF, or coordinates file (.npy or .txt)."
+        + " Multiple paths can be provided separated by spaces (e.g., --protA path1 path2 path3).",
+    )
 
-    parser.add_argument("--prot_listB", type=str, default='',
-        help="Input Protein(s) B: Can be a path to a file multiple protein paths." + \
-             "One protein path per line. Each protein path can be a PDB, mmCIF, or coordinates file (.npy or .txt).")
-
+    parser.add_argument(
+        "--prot_listB",
+        type=str,
+        default="",
+        help="Input Protein(s) B: Can be a path to a file multiple protein paths."
+        + "One protein path per line. Each protein path can be a PDB, mmCIF, or coordinates file (.npy or .txt).",
+    )
 
     ### Parameters controlling which residues to include in deformation calculations
 
-    parser.add_argument("--max_bfactor", type=float, default=0.0,
-        help="Maximum bfactor cutoff: exclude from calculations any atoms with B-factor higher than the cutoff." + \
-             " Setting to zero turns this function off.")
+    parser.add_argument(
+        "--max_bfactor",
+        type=float,
+        default=0.0,
+        help="Maximum bfactor cutoff: exclude from calculations any atoms with B-factor higher than the cutoff."
+        + " Setting to zero turns this function off.",
+    )
 
-    parser.add_argument("--min_plddt", type=float, default=0.0,
-        help="Minimum pLDDT cutoff: exclude from calculations any atoms with pLDDT lower than the cutoff." + \
-             " To avoid high deformation due to disordered residues, a value of 70 is suggested." + \
-             " Setting to zero turns this function off.")
-    
-    parser.add_argument("--neigh_cut", type=float, default=13.0,
-        help="Neighbor distance cutoff: distance in Angstroms within which residues are considered neighbors.")
-    
-    parser.add_argument("--fix_pdb", action="store_true", default=False,
-        help="If PDB files have missing coordinates, it is advisable to use this option. This option reads" + \
-             " the SEQRES entry of the PDB file, and reshapes the coordinate matrix to include the gaps as nan values. " + \
-             "This allows comparison of PDB files with different sets of missing coordinates.")
-    
+    parser.add_argument(
+        "--min_plddt",
+        type=float,
+        default=0.0,
+        help="Minimum pLDDT cutoff: exclude from calculations any atoms with pLDDT lower than the cutoff."
+        + " To avoid high deformation due to disordered residues, a value of 70 is suggested."
+        + " Setting to zero turns this function off.",
+    )
+
+    parser.add_argument(
+        "--neigh_cut",
+        type=float,
+        default=13.0,
+        help="Neighbor distance cutoff: distance in Angstroms within which residues are considered neighbors.",
+    )
+
+    parser.add_argument(
+        "--fix_pdb",
+        action="store_true",
+        default=False,
+        help="If PDB files have missing coordinates, it is advisable to use this option. This option reads"
+        + " the SEQRES entry of the PDB file, and reshapes the coordinate matrix to include the gaps as nan values. "
+        + "This allows comparison of PDB files with different sets of missing coordinates.",
+    )
 
     ### Other
 
-    parser.add_argument("-m", "--method", nargs="+", type=str, default=['strain'],
-        help="Deformation method: 'all' will automatically calculate everything. Multiple methods may be provided separated by spaces. Accepted methods:" + \
-             "\n\t'mut_dist' :: Distance from nearest mutated residue" + \
-             "\n\t'strain' :: Effective Strain" + \
-             "\n\t'shear' :: Shear Strain" + \
-             "\n\t'non_affine' :: Non-Affine Strain" + \
-             "\n\t'ldd' :: Local Distance Difference (LDD)" + \
-             "\n\t'lddt' :: Local Distance Difference Test (LDDT)" + \
-             "\n\t'neighborhood_dist' :: Neighborhood Distance" + \
-             "\n\t'rmsd' :: Root-mean-squared-deviation (RMSD)")
+    parser.add_argument(
+        "-m",
+        "--method",
+        nargs="+",
+        type=str,
+        default=["strain"],
+        help="Deformation method: 'all' will automatically calculate everything. Multiple methods may be provided separated by spaces. Accepted methods:"
+        + "\n\t'mut_dist' :: Distance from nearest mutated residue"
+        + "\n\t'strain' :: Effective Strain"
+        + "\n\t'shear' :: Shear Strain"
+        + "\n\t'non_affine' :: Non-Affine Strain"
+        + "\n\t'ldd' :: Local Distance Difference (LDD)"
+        + "\n\t'lddt' :: Local Distance Difference Test (LDDT)"
+        + "\n\t'neighborhood_dist' :: Neighborhood Distance"
+        + "\n\t'rmsd' :: Root-mean-squared-deviation (RMSD)",
+    )
 
-    parser.add_argument("--lddt_cutoffs", type=float, nargs="+", default=[0.5, 1, 2, 4],
-        help="Neighbor distance cutoff: distance in Angstroms within which residues are considered neighbors.")
+    parser.add_argument(
+        "--lddt_cutoffs",
+        type=float,
+        nargs="+",
+        default=[0.5, 1, 2, 4],
+        help="Neighbor distance cutoff: distance in Angstroms within which residues are considered neighbors.",
+    )
 
-    parser.add_argument("-v", "--verbose", default=False, action='store_true',
-        help="Print out information in addition to WARNINGS and ERRORS.")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        default=False,
+        action="store_true",
+        help="Print out information in addition to WARNINGS and ERRORS.",
+    )
 
-    parser.add_argument("-o", "--output", default='output.csv', type=str,
-        help="Path to output file.")
-
+    parser.add_argument(
+        "-o", "--output", default="output.csv", type=str, help="Path to output file."
+    )
 
     return parser.parse_args()
-
 
 
 ### Parses different input types, and return a list of paths
 def parse_input_path_AB(prot, prot_list, lbl):
     if len(prot) and len(prot_list):
-        raise Exception(f"ERROR! Please only specify either --prot{lbl} OR --prot_list{lbl}." + \
-                         " Do not specify both at the same time")
+        raise Exception(
+            f"ERROR! Please only specify either --prot{lbl} OR --prot_list{lbl}."
+            + " Do not specify both at the same time"
+        )
 
     # Get list of paths
     if len(prot):
@@ -88,7 +143,7 @@ def parse_input_path_AB(prot, prot_list, lbl):
     elif len(prot_list):
         if not os.path.exists(prot_list):
             raise FileNotFoundError(f"Path '{prot_list}' not found.")
-        path_list = [l.strip('\n') for l in open(prot_list).readlines()]
+        path_list = [l.strip("\n") for l in open(prot_list).readlines()]
 
     # Check that paths exist
     path_out = []
@@ -105,19 +160,23 @@ def parse_input_path_AB(prot, prot_list, lbl):
 def parse_input_paths(args):
     # Do not allow path lists to be defined using both input types simulaneously
     if len(args.protA) or len(args.prot_listA):
-        pathA = parse_input_path_AB(args.protA, args.prot_listA, 'A')
+        pathA = parse_input_path_AB(args.protA, args.prot_listA, "A")
     else:
-        raise Exception("ERROR! No input files provided. Please specifiy at least --protA OR --prot_listA.")
+        raise Exception(
+            "ERROR! No input files provided. Please specifiy at least --protA OR --prot_listA."
+        )
 
     # It is permitted to not pass any arguments for protB
     if len(args.protB) or len(args.prot_listB):
-        pathB = parse_input_path_AB(args.protB, args.prot_listB, 'B')
+        pathB = parse_input_path_AB(args.protB, args.prot_listB, "B")
     else:
         pathB = []
 
     # More than one protein file must be submitted
     if (not len(pathB)) & (len(pathA) == 1):
-        raise Exception("ERROR! Only one protein file was provided. Please specify more than one file.")
+        raise Exception(
+            "ERROR! Only one protein file was provided. Please specify more than one file."
+        )
 
     return pathA, pathB
 
@@ -138,7 +197,14 @@ def load_protein_kwargs(args):
 
 
 def load_deformation_kwargs(args):
-    kwargs_list = ["method", "max_bfactor", "min_plddt", "neigh_cut", "verbose", "lddt_cutoffs"]
+    kwargs_list = [
+        "method",
+        "max_bfactor",
+        "min_plddt",
+        "neigh_cut",
+        "verbose",
+        "lddt_cutoffs",
+    ]
     return {k: getattr(args, k) for k in kwargs_list}
 
 
@@ -157,11 +223,34 @@ def main():
 
     else:
         protA = load_protein_object(pathA, **protein_kwargs)
-        
+
+
+def main_parallel(pathA, pathB, output_dir):
+    protA = load_protein_object(pathA)
+    protB = load_protein_object(pathB)
+    print(protB)
+    # deform = Deformation(protA, protB)
+    # deform.run()
+    # deform.save_output(output_dir)
+
+
+def test_parallel(a, p):
+    print(p)
+    time.sleep(0.3)
 
 
 if __name__ == "__main__":
-    main()
-    
+    parser = ArgumentParser()
+    parser.add_argument("-mode")
+    parser.add_argument("-paths")
+    parser.add_argument("-out")
 
+    args = parser.parse_args()
+    with open(args.paths) as f:
+        paths_tot = f.readlines()
 
+    wt, paths = paths_tot[:1], paths_tot[1:]
+    out = args.out
+    if args.mode == "parallel":
+        head_workers_queue(ref=wt, paths=paths, output=out, func=main_parallel)
+        print("finished parallel run")

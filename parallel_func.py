@@ -1,0 +1,49 @@
+import os
+import sys
+
+import numpy as np
+from mpi4py import MPI
+
+# Script to design parallel functions for Effective Strain Analysis
+
+
+def parallel_setup():
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+    return comm, rank, size
+
+
+def head_workers_queue(ref, paths, output, func, *args, **kwargs):
+    comm, rank, size = parallel_setup()
+    head = 0
+    tot_n = len(paths)
+    next_to_do = 0
+    if rank == 0:
+        for dst in range(1, size):
+            print(f"source sending to {dst}")
+            comm.send(np.int32(next_to_do), dest=dst, tag=11)
+            next_to_do += 1
+            if next_to_do == tot_n:
+                break
+
+        # continue until finished to end once worker is done
+        while next_to_do < tot_n:
+            status = MPI.Status()
+            d = comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status)
+            src = status.Get_source()
+            tag = status.Get_tag()
+            comm.send(np.int32(next_to_do), dest=src, tag=11)
+            next_to_do += 1
+        for i in range(1, size):
+            comm.send(np.int32(-1), dest=i, tag=11)
+    else:
+        while True:
+            data = comm.recv(source=0, tag=11)
+            print(f"Rank: {rank}, received {data} from source")
+            if data == np.int32(-1):
+                break
+            func(ref, paths[data], output, *args, **kwargs)
+            comm.send(np.int32(1), dest=head, tag=11)
+
+    MPI.Finalize()
