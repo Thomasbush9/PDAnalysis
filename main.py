@@ -4,9 +4,12 @@ import time
 from argparse import ArgumentParser
 from pathlib import Path
 from re import L
+import re
 
 from parallel_func import head_workers_queue
 from PDAnalysis import AverageProtein, Deformation, Protein
+
+from pathlib import Path
 
 
 def parse_args():
@@ -224,33 +227,50 @@ def main():
     else:
         protA = load_protein_object(pathA, **protein_kwargs)
 
+# update or write a wrapper 
+def main_parallel(pathA, pathB, out_dir, *args, **kwargs):
+    print(f"{pathA=}")
+    print(f"{pathB=}")
+    if len(pathB):
+        protA = load_protein_object(pathA)
+        protB = load_protein_object(pathB)
+        deform = Deformation(protA, protB)
+        deform.run()
+        # parse the out
 
-def main_parallel(pathA, pathB, output_dir):
-    protA = load_protein_object(pathA)
-    protB = load_protein_object(pathB)
-    print(protB)
-    # deform = Deformation(protA, protB)
-    # deform.run()
-    # deform.save_output(output_dir)
+        m = re.search(r"(seq_\d+)", pathB[0])
+        seq_n = m.group(1)
+        output = out_dir / f"{seq_n}.csv"
+        deform.save_output(str(output))
 
+    else:
+        protA = load_protein_object(pathA, **protein_kwargs)
 
-def test_parallel(a, p):
-    print(p)
-    time.sleep(0.3)
 
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("-mode")
-    parser.add_argument("-paths")
-    parser.add_argument("-out")
+    parser.add_argument("--mode", type=str)
+    parser.add_argument("--protA", type=str, default=None)
+    parser.add_argument("--path_list", type=str)
+    parser.add_argument("--out_dir", type=str)
 
     args = parser.parse_args()
-    with open(args.paths) as f:
-        paths_tot = f.readlines()
-
-    wt, paths = paths_tot[:1], paths_tot[1:]
-    out = args.out
     if args.mode == "parallel":
-        head_workers_queue(ref=wt, paths=paths, output=out, func=main_parallel)
-        print("finished parallel run")
+    # start parallel args: 
+        if args.protA is not None: 
+            protA = [args.protA]
+            with open(args.path_list) as f:
+                prot_paths = [line.strip() for line in f]
+        else: 
+            with open(args.path_list) as f:
+                prot_paths = [line.strip() for line in f]
+            protA = [prot_paths[0]]
+            prot_paths = prot_paths[1:]
+        out_dir = Path(args.out_dir) 
+        head_workers_queue(protA, prot_paths, out_dir, main_parallel)
+
+    
+
+
+

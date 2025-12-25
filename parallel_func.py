@@ -1,6 +1,6 @@
 import os
 import sys
-
+from typing import List
 import numpy as np
 from mpi4py import MPI
 
@@ -14,7 +14,7 @@ def parallel_setup():
     return comm, rank, size
 
 
-def head_workers_queue(ref, paths, output, func, *args, **kwargs):
+def head_workers_queue(protA:List[str], paths:List[str], output:str, func, *args, **kwargs):
     comm, rank, size = parallel_setup()
     head = 0
     tot_n = len(paths)
@@ -39,11 +39,13 @@ def head_workers_queue(ref, paths, output, func, *args, **kwargs):
             comm.send(np.int32(-1), dest=i, tag=11)
     else:
         while True:
-            data = comm.recv(source=0, tag=11)
-            print(f"Rank: {rank}, received {data} from source")
-            if data == np.int32(-1):
+            idx = comm.recv(source=0, tag=11)
+            print(f"Rank: {rank}, received {idx} from source")
+            if idx == np.int32(-1):
                 break
-            func(ref, paths[data], output, *args, **kwargs)
+            func(protA, [paths[idx]], output, *args, **kwargs)
             comm.send(np.int32(1), dest=head, tag=11)
 
     MPI.Finalize()
+    print("finished parallel run")
+    print("finished parallel run")
