@@ -12,7 +12,7 @@ from PDAnalysis import AverageProtein, Deformation, Protein
 from pathlib import Path
 
 
-def parse_args():
+def parse_args(argv):
     parser = argparse.ArgumentParser(
         prog="python main.py",
         description="Protein Deformation Analysis v0.0.0: software for analysing deformation between protein structures.",
@@ -128,7 +128,7 @@ def parse_args():
         "-o", "--output", default="output.csv", type=str, help="Path to output file."
     )
 
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 ### Parses different input types, and return a list of paths
@@ -226,18 +226,16 @@ def main():
 
     else:
         protA = load_protein_object(pathA, **protein_kwargs)
-
-# update or write a wrapper 
-def main_parallel(pathA, pathB, out_dir, *args, **kwargs):
-    print(f"{pathA=}")
-    print(f"{pathB=}")
+#TODO add better loading of proteins 
+def main_parallel(pathA, pathB, out_dir, argv, *args, **kwargs):
     if len(pathB):
-        protA = load_protein_object(pathA)
-        protB = load_protein_object(pathB)
-        deform = Deformation(protA, protB)
+        args = parse_args(argv)
+        protein_kwargs = load_protein_kwargs(args)
+        deform_kwargs = load_deformation_kwargs(args)
+        protA = load_protein_object(pathA, **protein_kwargs)
+        protB = load_protein_object(pathB, **protein_kwargs)
+        deform = Deformation(protA, protB, **deform_kwargs)
         deform.run()
-        # parse the out
-
         m = re.search(r"(seq_\d+)", pathB[0])
         seq_n = m.group(1)
         output = out_dir / f"{seq_n}.csv"
@@ -247,16 +245,15 @@ def main_parallel(pathA, pathB, out_dir, *args, **kwargs):
         protA = load_protein_object(pathA, **protein_kwargs)
 
 
-
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--mode", type=str)
+    parser.add_argument("--parallel", type=bool, default=False)
     parser.add_argument("--protA", type=str, default=None)
     parser.add_argument("--path_list", type=str)
     parser.add_argument("--out_dir", type=str)
 
-    args = parser.parse_args()
-    if args.mode == "parallel":
+    args, argv = parser.parse_known_args()
+    if args.parallel:
     # start parallel args: 
         if args.protA is not None: 
             protA = [args.protA]
@@ -268,7 +265,10 @@ if __name__ == "__main__":
             protA = [prot_paths[0]]
             prot_paths = prot_paths[1:]
         out_dir = Path(args.out_dir) 
-        head_workers_queue(protA, prot_paths, out_dir, main_parallel)
+        head_workers_queue(protA, prot_paths, out_dir, argv, main_parallel)
+    # pass remaining to main
+    else: 
+        main(remaining)
 
     
 

@@ -13,8 +13,8 @@ def parallel_setup():
     size = comm.Get_size()
     return comm, rank, size
 
-
-def head_workers_queue(protA:List[str], paths:List[str], output:str, func, *args, **kwargs):
+#TODO add the combining function 
+def head_workers_queue(protA:List[str], paths:List[str], output:str, argv,  func, *args, **kwargs):
     comm, rank, size = parallel_setup()
     head = 0
     tot_n = len(paths)
@@ -43,7 +43,7 @@ def head_workers_queue(protA:List[str], paths:List[str], output:str, func, *args
             print(f"Rank: {rank}, received {idx} from source")
             if idx == np.int32(-1):
                 break
-            func(protA, [paths[idx]], output, *args, **kwargs)
+            func(protA, [paths[idx]], output, argv,  *args, **kwargs)
             comm.send(np.int32(1), dest=head, tag=11)
 
     MPI.Finalize()
