@@ -248,17 +248,19 @@ def main_parallel(pathA, pathB, out_dir, argv, *args, **kwargs):
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--parallel", type=bool, default=False)
-    parser.add_argument("--protA", type=str, default=None)
-    parser.add_argument("--path_list", type=str)
-    parser.add_argument("--out_dir", type=str)
-
     args, argv = parser.parse_known_args()
     if args.parallel:
+        parser = ArgumentParser()
+        parser.add_argument("--protA", type=str, default=None)
+        parser.add_argument("--path_list", type=str)
+        parser.add_argument("--out_dir", type=str)
+        args, argv = parser.parse_known_args(argv)
     # start parallel args: 
         if args.protA is not None: 
             protA = [args.protA]
             with open(args.path_list) as f:
                 prot_paths = [line.strip() for line in f]
+        #handle when we don't pass a to test
         else: 
             with open(args.path_list) as f:
                 prot_paths = [line.strip() for line in f]
@@ -268,9 +270,8 @@ if __name__ == "__main__":
         head_workers_queue(protA, prot_paths, out_dir, argv, main_parallel)
     # pass remaining to main
     else: 
-        main(remaining)
+        main(argv)
 
-    
 
 
 
