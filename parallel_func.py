@@ -1,12 +1,31 @@
+from __future__ import annotations
 import os
 import sys
 from typing import List
 import numpy as np
 from mpi4py import MPI
 import pandas as pd
+import joblib
+from pathlib import Path
 
 # Script to design parallel functions for Effective Strain Analysis
+def save_df_dict_joblib(df_dict: dict[str, pd.DataFrame], path: str | os.PathLike) -> None:
+    joblib.dump(df_dict, path, compress=3)  # compress=0..9
 
+def load_df_dict_joblib(path: str | os.PathLike) -> dict[str, pd.DataFrame]:
+    return joblib.load(path)
+
+def load_csv_dict(output_dir: str | os.PathLike, *, glob_pattern: str = "*.csv") -> dict[str, pd.DataFrame]:
+    output_dir = Path(output_dir)
+    csv_dict: dict[str, pd.DataFrame] = {}
+
+    for p in sorted(output_dir.glob(glob_pattern)):
+        if p.name == "combined.csv":
+            continue
+        key = p.stem  # "seq_01812"
+        csv_dict[key] = pd.read_csv(p)
+
+    return csv_dict
 
 def parallel_setup():
     comm = MPI.COMM_WORLD
@@ -44,12 +63,11 @@ def head_workers_queue(protA:List[str], paths:List[str], output:str, argv,  func
 
         for i in range(1, size):
             comm.send(np.int32(-1), dest=i, tag=11)
-        # concat all the csv in one: 
-        all_csv_path = [
-            os.path.join(output, csv_name) for csv_name in os.listdir(output) if csv_name.endswith(".csv") and csv_name != "combined.csv"
-        ]
-        df_combined = pd.concat(map(pd.read_csv, all_csv_path), ignore_index=True)
-        df_combined.to_csv(os.path.join(output, "combined.csv"))
+        #combine csv and save them 
+        csv_dict = load_csv_dict(output)
+        save_df_dict_joblib(csv_dict, os.path.join(output,"combined.joblib"))
+    
+
     else:
         while True:
             idx = comm.recv(source=0, tag=11)
