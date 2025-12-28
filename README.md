@@ -71,6 +71,24 @@ Optional Arguments:
 * "--neigh\_cut"    :: Neighbor cutoff distance in Angstroms.
 * "--lddt\_cutoffs" :: Specify the distance cutoffs used in LDDT calculation. Default = (0.5, 1, 2, 4).
 
+#### Running program in parallel: 
+
+The program can be run in parallel using mpiexec: 
+
+```mpiexec -n number_processor main.py args`
+
+
+* "--parallel" True :: Activates the MPI script 
+
+* "--protA"         :: Path to a single protein, or multiple paths separated by spaces. Allowed input types: .pdb, .cif, .npy, .txt.
+
+* "--path_list" :: Path to a .txt file containing protein paths. Allowed inputs types: .pdb, .cif, .npy, .txt.
+
+* "--out_dir" :: Path to directory where to save the results as: filename.csv + combined.joblib file with all the results
+
+* "kwargs" :: All the remaining args are the same as the non-parallel version 
+
+**Notes**: at the moment the script does not support the averaging between inputs. 
 
 Examples:  
 Calculates "Effective Strain" between two PDB conformations, and ignore residues with pLDDT < 70:
