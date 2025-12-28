@@ -244,7 +244,6 @@ def main_parallel(pathA, pathB, out_dir, argv, *args, **kwargs):
     else:
         protA = load_protein_object(pathA, **protein_kwargs)
 
-
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--parallel", type=bool, default=False)

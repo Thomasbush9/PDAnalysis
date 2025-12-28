@@ -60,7 +60,9 @@ if __name__ == "__main__":
         'numpy>=1.22.3',
         'biopython>=1.80',
         'pandas>=1.4.4',
-        'scipy>=1.5.0'
+        'scipy>=1.5.0',
+        'mpi4py>=4.1.1',
+        'joblib>=1.4.2'
     ]
 
     ENTRY_POINTS = {
