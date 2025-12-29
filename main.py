@@ -269,7 +269,7 @@ if __name__ == "__main__":
         head_workers_queue(protA, prot_paths, out_dir, argv, main_parallel)
     # pass remaining to main
     else: 
-        main(argv)
+        main()
 
 
 

@@ -34,7 +34,7 @@ def parallel_setup():
     return comm, rank, size
 
 #TODO add the combining function 
-def head_workers_queue(protA:List[str], paths:List[str], output:str, argv,  func, *args, **kwargs):
+def head_workers_queue(protA:List[str], paths:List[str], output:Path, argv,  func, *args, **kwargs):
     comm, rank, size = parallel_setup()
     head = 0
     tot_n = len(paths)
