@@ -226,7 +226,11 @@ def main():
 
     else:
         protA = load_protein_object(pathA, **protein_kwargs)
-#TODO add better loading of proteins 
+
+def load_average_pred():
+    """Given a set of paths of predictions it combines them to get the average for each seq"""
+    pass
+
 def main_parallel(pathA, pathB, out_dir, argv, *args, **kwargs):
     if len(pathB):
         args = parse_args(argv)

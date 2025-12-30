@@ -39,6 +39,7 @@ dependencies = [
   "scipy>=1.5.0",
   "mpi4py>=4.1.1",
   "joblib>=1.4.2",
+  "mpich>=4.3.2",
 ]
 
 [project.urls]
