@@ -5,10 +5,9 @@ from argparse import ArgumentParser
 from pathlib import Path
 from re import L
 import re
-
+from typing import List
 from parallel_func import head_workers_queue
 from PDAnalysis import AverageProtein, Deformation, Protein
-
 from pathlib import Path
 
 
@@ -227,11 +226,30 @@ def main():
     else:
         protA = load_protein_object(pathA, **protein_kwargs)
 
-def load_average_pred():
-    """Given a set of paths of predictions it combines them to get the average for each seq"""
-    pass
+def load_average_pred(files:List):
+    """Given a set of paths of predictions it combines them to get the average for each seq
 
-def main_parallel(pathA, pathB, out_dir, argv, *args, **kwargs):
+        Args:
+            - files: List of files .txt containing the paths to the protein files
+
+        Returns: 
+            - List[List]: containin the paths for the same sequence for average
+    """
+    # we create a list of lists for each seq: 
+    path_dict = {}
+    for file in files:
+        with open(file) as f:
+            lines = [line.strip() for line in f]
+        for path in lines: 
+            m = re.search(r"(seq_\d+)", path)
+            seq_n = m.group(1)
+            if seq_n in path_dict:
+                path_dict[seq_n].append(path)
+            else:
+                path_dict[seq_n] = [path]
+    return list(path_dict.values())
+
+def main_parallel(pathA:List, pathB:List, out_dir:Path, argv, *args, **kwargs):
     if len(pathB):
         args = parse_args(argv)
         protein_kwargs = load_protein_kwargs(args)
@@ -255,18 +273,17 @@ if __name__ == "__main__":
     if args.parallel:
         parser = ArgumentParser()
         parser.add_argument("--protA", type=str, default=None)
-        parser.add_argument("--path_list", type=str)
+        parser.add_argument("--path_list", metavar="N", type=str, nargs='+', help="list of .txt of paths")
         parser.add_argument("--out_dir", type=str)
-        args, argv = parser.parse_known_args(argv)
-    # start parallel args: 
+        args, argv = parser.parse_known_args(argv) 
+        if len(args.path_list) > 1:
+            prot_paths = load_average_pred(args.path_list)
+        else:
+            with open(args.path_list) as f:
+                prot_paths = [line.strip() for line in f]
         if args.protA is not None: 
             protA = [args.protA]
-            with open(args.path_list) as f:
-                prot_paths = [line.strip() for line in f]
-        #handle when we don't pass a to test
         else: 
-            with open(args.path_list) as f:
-                prot_paths = [line.strip() for line in f]
             protA = [prot_paths[0]]
             prot_paths = prot_paths[1:]
         out_dir = Path(args.out_dir) 
