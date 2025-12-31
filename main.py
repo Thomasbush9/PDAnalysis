@@ -210,8 +210,8 @@ def load_deformation_kwargs(args):
     return {k: getattr(args, k) for k in kwargs_list}
 
 
-def main():
-    args = parse_args()
+def main(argv):
+    args = parse_args(argv)
     pathA, pathB = parse_input_paths(args)
     protein_kwargs = load_protein_kwargs(args)
     deform_kwargs = load_deformation_kwargs(args)
@@ -290,7 +290,7 @@ if __name__ == "__main__":
         head_workers_queue(protA, prot_paths, out_dir, argv, main_parallel)
     # pass remaining to main
     else: 
-        main()
+        main(argv)
 
 
 
