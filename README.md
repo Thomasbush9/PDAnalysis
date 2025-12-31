@@ -89,6 +89,18 @@ mpiexec -n number_processor main.py args
 
 * `kwargs` :: All the remaining args are the same as the non-parallel version 
 
+**Examples:**
+
+```bash
+mpiexec -n N python main.py --parallel True --proA path/to/proteinA --path_list /path/to/paths.txt --out_dir /path/to/output_directory
+```
+
+
+```bash
+mpiexec -n N python main.py --parallel True --proA path/to/proteinA --path_list /path/to/paths1.txt  /path/to/paths2.txt --out_dir /path/to/output_directory
+```
+
+---
 Examples:  
 Calculates "Effective Strain" between two PDB conformations, and ignore residues with pLDDT < 70:
 ```
