@@ -31,6 +31,7 @@ def parallel_setup():
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
+    print(f"[rank {rank}/{size}] MPI initialized", flush=True)
     return comm, rank, size
 
 def head_workers_queue(protA:List[str], paths:List[str], output:Path, argv,  func, *args, **kwargs):
