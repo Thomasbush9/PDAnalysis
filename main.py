@@ -287,7 +287,7 @@ if __name__ == "__main__":
             protA = [prot_paths[0]]
             prot_paths = prot_paths[1:]
         out_dir = Path(args.out_dir) 
-        head_workers_queue(protA, prot_paths, out_dir, argv, main_parallel)
+        head_workers_queue(protA, prot_paths, out_dir, argv, main_parallel, single=True)
     # pass remaining to main
     else: 
         main(argv)
