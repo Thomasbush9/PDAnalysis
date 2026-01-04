@@ -279,7 +279,7 @@ if __name__ == "__main__":
         if len(args.path_list) > 1:
             prot_paths = load_average_pred(args.path_list)
         else:
-            with open(args.path_list) as f:
+            with open(args.path_list[0]) as f:
                 prot_paths = [line.strip() for line in f]
         if args.protA is not None: 
             protA = [args.protA]
