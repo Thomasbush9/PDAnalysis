@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+from os.path import exists
 import sys
 from typing import List
 import numpy as np
@@ -68,6 +69,14 @@ def head_workers_queue(protA:List[str], paths:List[str], output:Path, argv,  fun
         csv_dict = load_csv_dict(output)
         save_df_dict_joblib(csv_dict, os.path.join(output,"combined.joblib"))
     
+        csv_dict = load_csv_dict(output)
+        combined_path = output / "combined.joblib"
+        if combined_path.exists():
+            existing = load_df_dict_joblib(combined_path)
+            existing.update(csv_dict)
+            csv_dict = existing
+
+        save_df_dict_joblib(csv_dict, combined_path)
 
     else:
         while True:
