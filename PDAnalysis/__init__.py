@@ -9,5 +9,10 @@ from .protein import Protein, AverageProtein
 from .deformation import Deformation
 from . import pdb_parser, utils
 
+try:
+    from . import visualization
+except ImportError:
+    pass
+
 
 
