@@ -18,6 +18,8 @@ except ImportError:
     )
 
 import numpy as np
+import pandas as pd
+from pathlib import Path
 
 from .protein import Protein, AverageProtein
 from .utils import rotate_points
@@ -68,6 +70,83 @@ def _get_contiguous_segments(valid_mask):
     if in_segment:
         segments.append((start, len(valid_mask)))
     return segments
+
+
+# ---------------------------------------------------------------------------
+# Dashboard helpers
+# ---------------------------------------------------------------------------
+
+_NON_METRIC_COLS = {"residue_index", "protA_resname", "protB_resname"}
+
+
+def _detect_metric_columns(df):
+    """Return list of numeric column names excluding fixed ID columns."""
+    return [
+        c for c in df.columns
+        if c not in _NON_METRIC_COLS and pd.api.types.is_numeric_dtype(df[c])
+    ]
+
+
+def _load_df_dict(source):
+    """Resolve *source* into ``dict[str, DataFrame]``.
+
+    Accepts:
+    - ``dict`` of ``{name: DataFrame}`` — returned as-is.
+    - path to a ``.joblib`` file — loaded with ``joblib.load()``.
+    - path to a directory — globs ``*.csv`` (skipping ``combined.csv``),
+      reads each with ``pd.read_csv``.
+    """
+    if isinstance(source, dict):
+        return source
+
+    source = Path(source)
+
+    if source.suffix == ".joblib":
+        import joblib
+        data = joblib.load(source)
+        if isinstance(data, dict):
+            return {k: (v if isinstance(v, pd.DataFrame) else pd.DataFrame(v))
+                    for k, v in data.items()}
+        raise TypeError(
+            f"Expected dict inside joblib file, got {type(data).__name__}"
+        )
+
+    if source.is_dir():
+        csvs = sorted(source.glob("*.csv"))
+        csvs = [p for p in csvs if p.name != "combined.csv"]
+        if not csvs:
+            raise FileNotFoundError(f"No CSV files found in {source}")
+        return {p.stem: pd.read_csv(p) for p in csvs}
+
+    raise ValueError(
+        f"source must be a dict, .joblib path, or directory; got {source}"
+    )
+
+
+def _build_heatmap_matrix(df_dict, metric, max_residue=None):
+    """Build a 2-D array (proteins x residues) for the heatmap panel.
+
+    Returns ``(matrix, names)`` where *matrix* has shape
+    ``(N, max_residue)`` and *names* is the list of protein labels.
+    Missing residue positions are filled with NaN.
+    """
+    names = list(df_dict.keys())
+    if max_residue is None:
+        max_residue = max(
+            int(df["residue_index"].max())
+            for df in df_dict.values()
+            if "residue_index" in df.columns
+        )
+    matrix = np.full((len(names), max_residue), np.nan)
+    for i, name in enumerate(names):
+        df = df_dict[name]
+        if metric not in df.columns:
+            continue
+        idx = df["residue_index"].values.astype(int) - 1  # 0-based
+        vals = df[metric].values.astype(float)
+        valid = (idx >= 0) & (idx < max_residue)
+        matrix[i, idx[valid]] = vals[valid]
+    return matrix, names
 
 
 # ---------------------------------------------------------------------------
@@ -514,5 +593,260 @@ def plot_strain_profile(deformation, metric="strain", **kwargs):
         xaxis_title="Residue Index",
         yaxis_title=ylabel,
         template="plotly_white",
+    )
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Multi-protein dashboard
+# ---------------------------------------------------------------------------
+
+def get_available_metrics(source):
+    """Return sorted list of metric columns common to all DataFrames in *source*.
+
+    Parameters
+    ----------
+    source : dict[str, DataFrame] | str | Path
+        Anything accepted by ``_load_df_dict``.
+    """
+    df_dict = _load_df_dict(source)
+    sets = [set(_detect_metric_columns(df)) for df in df_dict.values()]
+    common = sets[0]
+    for s in sets[1:]:
+        common &= s
+    return sorted(common)
+
+
+def plot_dashboard(source, **kwargs):
+    """Interactive 2x2 dashboard comparing N proteins on a single metric.
+
+    Layout::
+
+        ┌──────────────────────┬──────────────────────┐
+        │  Heatmap             │  Overlaid Profiles    │
+        │  (protein x residue) │  (line per protein)   │
+        ├──────────────────────┼──────────────────────┤
+        │  Distributions       │  Summary Bar Chart    │
+        │  (violin / box)      │  (mean + max markers) │
+        └──────────────────────┴──────────────────────┘
+
+    Parameters
+    ----------
+    source : dict[str, DataFrame] | str | Path
+        Anything accepted by ``_load_df_dict``.
+    metric : str
+        Column name to visualise (default ``"strain"``).
+    sort_by : str or None
+        Sort proteins by ``"mean"``, ``"max"``, ``"median"``, or ``None``
+        for original order (default ``"mean"``).
+    cmap : str
+        Plotly colour-scale for the heatmap (default ``"Viridis"``).
+    line_opacity : float or None
+        Opacity for profile lines.  Auto-adjusted when *None* (default).
+    show_violin : bool
+        If True (default), show violins; else box plots.
+    title : str or None
+    height, width : int or None
+    truncate_labels : int or None
+        Max characters for protein labels (default 30).
+    vmin, vmax : float or None
+        Heatmap colour bounds.
+
+    Returns
+    -------
+    plotly.graph_objects.Figure
+    """
+    import plotly.express as px
+
+    df_dict = _load_df_dict(source)
+    metric = kwargs.get("metric", "strain")
+    sort_by = kwargs.get("sort_by", "mean")
+    cmap = kwargs.get("cmap", "Viridis")
+    line_opacity = kwargs.get("line_opacity", None)
+    show_violin = kwargs.get("show_violin", True)
+    title = kwargs.get("title", None)
+    height = kwargs.get("height", None)
+    width = kwargs.get("width", None)
+    truncate_labels = kwargs.get("truncate_labels", 30)
+    vmin = kwargs.get("vmin", None)
+    vmax = kwargs.get("vmax", None)
+
+    N = len(df_dict)
+    if N == 0:
+        raise ValueError("source contains no protein data")
+
+    # --- Compute summary stats and optionally sort ---
+    stats = {}
+    for name, df in df_dict.items():
+        vals = df[metric].dropna().values.astype(float) if metric in df.columns else np.array([])
+        stats[name] = {
+            "mean": float(np.nanmean(vals)) if len(vals) else 0.0,
+            "max": float(np.nanmax(vals)) if len(vals) else 0.0,
+            "median": float(np.nanmedian(vals)) if len(vals) else 0.0,
+        }
+
+    names = list(df_dict.keys())
+    if sort_by in ("mean", "max", "median"):
+        names = sorted(names, key=lambda n: stats[n][sort_by], reverse=True)
+
+    # Rebuild ordered dict
+    df_dict = {n: df_dict[n] for n in names}
+
+    # Truncate labels for display
+    if truncate_labels:
+        display_names = [
+            n[:truncate_labels] + "…" if len(n) > truncate_labels else n
+            for n in names
+        ]
+    else:
+        display_names = list(names)
+
+    # --- Auto-scale height ---
+    if height is None:
+        height = min(max(800, 120 + N * 18), 2000)
+    if width is None:
+        width = 1400
+
+    # --- Colour palette ---
+    palette = px.colors.qualitative.Plotly
+    colours = [palette[i % len(palette)] for i in range(N)]
+
+    if line_opacity is None:
+        line_opacity = max(0.15, 1.0 - N * 0.03)
+
+    # --- Build figure ---
+    fig = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=[
+            f"Heatmap — {metric}",
+            f"Per-Residue Profiles — {metric}",
+            f"Distributions — {metric}",
+            f"Summary — {metric}",
+        ],
+        vertical_spacing=0.12,
+        horizontal_spacing=0.08,
+    )
+
+    # --- Panel 1: Heatmap (row=1, col=1) ---
+    matrix, _ = _build_heatmap_matrix(df_dict, metric)
+    fig.add_trace(
+        go.Heatmap(
+            z=matrix,
+            x=np.arange(1, matrix.shape[1] + 1),
+            y=display_names,
+            colorscale=cmap,
+            zmin=vmin,
+            zmax=vmax,
+            colorbar=dict(title=metric, x=0.45, len=0.45, y=0.78),
+            hovertemplate="Residue %{x}<br>%{y}<br>Value: %{z:.4f}<extra></extra>",
+        ),
+        row=1, col=1,
+    )
+
+    # --- Panel 2: Overlaid line profiles (row=1, col=2) ---
+    for i, name in enumerate(names):
+        df = df_dict[name]
+        if metric not in df.columns:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=df["residue_index"],
+                y=df[metric],
+                mode="lines",
+                line=dict(color=colours[i], width=1.2),
+                opacity=line_opacity,
+                name=display_names[i],
+                legendgroup=display_names[i],
+                showlegend=True,
+            ),
+            row=1, col=2,
+        )
+
+    # --- Panel 3: Distributions (row=2, col=1) ---
+    for i, name in enumerate(names):
+        df = df_dict[name]
+        if metric not in df.columns:
+            continue
+        vals = df[metric].dropna().values
+        if show_violin:
+            fig.add_trace(
+                go.Violin(
+                    y=vals,
+                    name=display_names[i],
+                    legendgroup=display_names[i],
+                    showlegend=False,
+                    line_color=colours[i],
+                    meanline_visible=True,
+                    scalemode="width",
+                    width=0.8,
+                ),
+                row=2, col=1,
+            )
+        else:
+            fig.add_trace(
+                go.Box(
+                    y=vals,
+                    name=display_names[i],
+                    legendgroup=display_names[i],
+                    showlegend=False,
+                    marker_color=colours[i],
+                ),
+                row=2, col=1,
+            )
+
+    # --- Panel 4: Summary bar chart (row=2, col=2) ---
+    mean_vals = [stats[n]["mean"] for n in names]
+    max_vals = [stats[n]["max"] for n in names]
+
+    fig.add_trace(
+        go.Bar(
+            x=display_names,
+            y=mean_vals,
+            marker_color=colours,
+            name="Mean",
+            showlegend=False,
+            hovertemplate="%{x}<br>Mean: %{y:.4f}<extra></extra>",
+        ),
+        row=2, col=2,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=display_names,
+            y=max_vals,
+            mode="markers",
+            marker=dict(
+                symbol="diamond",
+                size=9,
+                color=colours,
+                line=dict(width=1, color="black"),
+            ),
+            name="Max",
+            showlegend=False,
+            hovertemplate="%{x}<br>Max: %{y:.4f}<extra></extra>",
+        ),
+        row=2, col=2,
+    )
+
+    # --- Layout polish ---
+    fig.update_xaxes(title_text="Residue Index", row=1, col=1)
+    fig.update_xaxes(title_text="Residue Index", row=1, col=2)
+    fig.update_yaxes(title_text=metric, row=1, col=2)
+    fig.update_yaxes(title_text=metric, row=2, col=1)
+    fig.update_xaxes(title_text="Protein", tickangle=45, row=2, col=2)
+    fig.update_yaxes(title_text=metric, row=2, col=2)
+
+    dashboard_title = title or f"Multi-Protein Dashboard — {metric}"
+    fig.update_layout(
+        title=dashboard_title,
+        height=height,
+        width=width,
+        template="plotly_white",
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=0.45,
+            xanchor="left",
+            x=1.02,
+        ),
     )
     return fig
